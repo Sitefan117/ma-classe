@@ -2,59 +2,117 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <!-- Configuration du viewport pour un affichage optimal sur tablettes (iPad) -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Secteur : Géométrie — Hub de Mission</title>
     
+    <!-- Importation de Tailwind CSS via CDN pour le stylage rapide -->
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
-        /* Base de l'interface visuelle (Thème Spatial Sombre) */
+        /* ==========================================================================
+           1. STYLES DE BASE ET THÈME GLOBAL
+           ========================================================================== */
         body {
+            /* Thème sombre "spatial" pour réduire la fatigue visuelle */
             background-color: #0b0f19;
             color: #f1f5f9;
+            /* Police système optimisée pour la lisibilité */
             font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
 
-        /* Cartes de l'interface */
+        /* ==========================================================================
+           2. COMPOSANTS DE L'INTERFACE (CARTES ET BOUTONS)
+           ========================================================================== */
+        /* Style des conteneurs principaux (effet de profondeur) */
         .game-card {
             background: linear-gradient(135deg, #161d30 0%, #0f1524 100%);
             border: 1px solid #24324f;
         }
 
-        /* Effet Cyber 3D interactif au toucher/clic pour tablettes */
+        /* Animation interactive au clic (effet d'enfoncement physique) */
         .btn-game-active {
             transform: translateY(0);
             box-shadow: 0 4px 0px 0px #05070f;
             transition: all 0.1s;
         }
+        /* Comportement actif (bouton pressé) uniquement s'il n'est pas désactivé */
         .btn-game-active:active:not(:disabled) {
             transform: translateY(4px);
             box-shadow: 0 0px 0px 0px #05070f;
         }
 
-        /* Boutons d'options tactiles */
+        /* Boutons de sélection d'options (Niveaux, Modes) */
         .option-btn {
-            touch-action: manipulation;
+            touch-action: manipulation; /* Optimisation pour le tactile iPad */
             background-color: #172033;
             border: 2px solid #2e3e65;
             transition: all 0.2s;
         }
         .option-btn:hover:not(:disabled) {
-            border-color: #22d3ee;
+            border-color: #22d3ee; /* Surbrillance cyan au survol */
         }
         
-        /* État actif d'un bouton sélectionné dans la configuration */
+        /* Classe appliquée lorsqu'une option est sélectionnée par l'élève */
         .option-selected {
             background-color: #0e3f47 !important;
             border-color: #22d3ee !important;
-            box-shadow: 0 0 12px rgba(34, 211, 238, 0.2);
+            box-shadow: 0 0 12px rgba(34, 211, 238, 0.2); /* Halo lumineux */
+        }
+
+        /* ==========================================================================
+           3. ACCESSIBILITÉ : MODE FLEXIBLE / BOUTONS XL
+           ========================================================================== */
+        /* Agrandit les zones de clics pour les élèves en mouvement (ex: vélo de bureau) */
+        body.mode-boutons-xl .option-btn,
+        body.mode-boutons-xl .lvl-btn,
+        body.mode-boutons-xl .mode-btn {
+            padding-top: 1.5rem !important;
+            padding-bottom: 1.5rem !important;
+            font-size: 1.15rem !important;
+        }
+
+        /* ==========================================================================
+           4. MOTEUR DE RENDU 3D CSS (ANIMATION DES SOLIDES)
+           ========================================================================== */
+        /* Conteneur de la scène 3D définissant la perspective */
+        .scene3d {
+            width: 120px;
+            height: 120px;
+            perspective: 400px; /* Profondeur de champ */
+        }
+        /* Conteneur du cube qui tourne sur lui-même */
+        .cube3d {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d; /* Indispensable pour la vraie 3D */
+            animation: spin3D 8s infinite linear; /* Rotation continue */
+        }
+        /* Définition de l'animation de rotation */
+        @keyframes spin3D {
+            from { transform: rotateX(-20deg) rotateY(0deg); }
+            to { transform: rotateX(-20deg) rotateY(360deg); }
+        }
+        /* Style des faces composant les solides 3D */
+        .face3d {
+            position: absolute;
+            border: 2px solid #22d3ee;
+            background: rgba(34, 211, 238, 0.15); /* Semi-transparent comme un hologramme */
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
     </style>
     
+    <!-- ==========================================================================
+         5. INITIALISATION FIREBASE (BASE DE DONNÉES)
+         ========================================================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+        // Configuration de la base de données Firebase "Numéria"
         const firebaseConfig = {
             apiKey: "AIzaSyAvXQI3f34J5htG-t9kroM4ynIqCgO9xXI",
             authDomain: "ma-classe-179de.firebaseapp.com",
@@ -64,32 +122,45 @@
             appId: "1:413792574665:web:87c29e054af287018e0118"
         };
 
+        // Initialisation des modules Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const appId = "classe-primaire-2026";
+        const appId = "classe-primaire-2026"; // Identifiant global du projet
 
-        async function enregistrerScoreFirebase(exercice, corrects, fautes) {
+        /**
+         * Fonction asynchrone pour envoyer les scores en fin de partie.
+         * Enregistre le nom, l'exercice, les réussites, les fautes et le détail des erreurs.
+         */
+        async function enregistrerScoreFirebase(exercice, corrects, fautes, detailsErreurs = []) {
+            // Récupère le nom de l'élève via l'URL ou la session
             const urlParams = new URLSearchParams(window.location.search);
             const nomEleve = urlParams.get('eleve') || sessionStorage.getItem('nomEleve') || "Anonyme";
             try {
+                // Création d'un nouveau document dans la collection "scores"
                 await addDoc(collection(db, `artifacts/${appId}/public/data/scores`), {
                     nomEleve: nomEleve,
                     exercice: exercice,
                     corrects: corrects,
                     fautes: fautes,
+                    detailsErreurs: detailsErreurs,
                     timestamp: Date.now()
                 });
             } catch (e) { 
-                console.error("Erreur Firebase:", e); 
+                console.error("Erreur d'enregistrement Firebase:", e); 
             }
         }
+        // Expose la fonction globalement pour pouvoir l'appeler hors du module type="module"
         window.enregistrerScoreFirebase = enregistrerScoreFirebase;
     </script>
 </head>
 <body class="min-h-screen flex flex-col antialiased select-none">
 
+    <!-- ==========================================================================
+         EN-TÊTE DE L'APPLICATION (HEADER)
+         ========================================================================== -->
     <header class="bg-[#090d16] border-b border-[#24324f] py-4 shadow-lg">
         <div class="max-w-4xl mx-auto px-4 flex justify-between items-center">
+            <!-- Bloc titre et identité de l'élève -->
             <div class="flex items-center gap-3">
                 <div class="bg-gradient-to-br from-cyan-500 to-blue-600 text-white p-2 rounded-xl border border-cyan-400/30 shadow-md">
                     <span class="text-xl">📐</span>
@@ -99,18 +170,27 @@
                     <p id="affichage-nom" class="text-xs font-bold text-cyan-400 tracking-widest">Agent : Chargement...</p>
                 </div>
             </div>
-            <a href="index.html" class="bg-[#172033] hover:bg-[#1f2b45] text-slate-200 px-4 py-2 rounded-xl text-xs font-bold tracking-widest uppercase border border-[#2e3e65] transition-all">↩ QG</a>
+            <!-- Boutons de contrôle globaux -->
+            <div class="flex items-center gap-3">
+                <!-- Toggle d'accessibilité pour les gros boutons -->
+                <button onclick="toggleGrosBoutons()" id="toggle-xl" class="bg-[#172033] text-slate-300 border border-[#2e3e65] px-3 py-1.5 rounded-xl text-xs font-bold tracking-wider uppercase transition-all">🚳 Boutons Standard</button>
+                <a href="index.html" class="bg-[#172033] hover:bg-[#1f2b45] text-slate-200 px-4 py-2 rounded-xl text-xs font-bold tracking-widest uppercase border border-[#2e3e65] transition-all">↩ QG</a>
+            </div>
         </div>
     </header>
 
     <main class="flex-grow max-w-4xl w-full mx-auto px-4 py-8 relative">
         
+        <!-- ==========================================================================
+             ÉCRAN 1 : CONFIGURATION DE LA PARTIE
+             ========================================================================== -->
         <section id="config-screen" class="game-card rounded-2xl p-6 sm:p-10 border shadow-xl max-w-2xl mx-auto space-y-8 tracking-wide">
             <div class="text-center">
                 <h2 class="text-2xl font-black text-cyan-400 uppercase tracking-wider mb-2">Configuration de la Mission</h2>
-                <p class="text-slate-400 text-sm">Paramétrez votre module d'entraînement géométrique.</p>
+                <p class="text-slate-400 text-sm">Paramétrez votre module d'entraînement géométrique romand.</p>
             </div>
 
+            <!-- Choix du degré PER -->
             <div class="space-y-4">
                 <label class="block text-xs font-bold text-amber-400 uppercase tracking-widest">1. Niveau de l'Agent :</label>
                 <div class="grid grid-cols-3 gap-3">
@@ -120,23 +200,31 @@
                 </div>
             </div>
 
+            <!-- Choix de la mécanique de jeu -->
             <div class="space-y-4">
                 <label class="block text-xs font-bold text-amber-400 uppercase tracking-widest">2. Mode d'Analyse :</label>
-                <div class="grid grid-cols-2 gap-3">
+                <!-- La grille passe à 3 colonnes sur PC/Tablette pour intégrer le Mode D -->
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
                     <button onclick="selectMode('A')" id="btn-mode-A" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide">🔍 Qui suis-je ?</button>
                     <button onclick="selectMode('B')" id="btn-mode-B" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide">⚠️ L'Intrus Visuel</button>
                     <button onclick="selectMode('C')" id="btn-mode-C" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide">📦 2D vs 3D</button>
-                    <button onclick="selectMode('Mixte')" id="btn-mode-Mixte" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide">🎲 Aléatoire</button>
+                    <button onclick="selectMode('D')" id="btn-mode-D" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide">🕵️ Qui-est-ce ?</button>
+                    <button onclick="selectMode('Mixte')" id="btn-mode-Mixte" class="mode-btn option-btn text-slate-200 font-bold py-3 px-2 rounded-xl text-sm tracking-wide md:col-span-2">🎲 Aléatoire</button>
                 </div>
             </div>
 
+            <!-- Bouton de lancement, inactif tant que les 2 paramètres ne sont pas choisis -->
             <button onclick="demarrerMission()" id="btn-start" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-black px-4 py-4 rounded-xl text-sm uppercase tracking-widest border border-cyan-400/30 shadow-lg btn-game-active opacity-40 cursor-not-allowed" disabled>
                 Initialiser la Mission 🚀
             </button>
         </section>
 
+        <!-- ==========================================================================
+             ÉCRAN 2 : ZONE DE JEU ACTIVE
+             ========================================================================== -->
         <section id="game-screen" class="hidden flex flex-col gap-6 tracking-wide">
             
+            <!-- Tableau de bord supérieur en jeu -->
             <div class="game-card rounded-2xl p-4 px-6 border shadow-xl flex justify-between items-center">
                 <div class="flex items-center gap-4">
                     <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">Analyse <span id="num-question" class="text-cyan-400 font-black text-lg">1</span> / 10</span>
@@ -150,19 +238,27 @@
                 </div>
             </div>
 
+            <!-- Fenêtre de l'exercice -->
             <div id="game-container" class="game-card rounded-2xl p-6 sm:p-8 border shadow-xl min-h-[440px] flex flex-col relative transition-all duration-300">
                 
+                <!-- Outils d'aide flottants (Audio, Indices, Radar visuel) -->
                 <div class="absolute top-4 right-4 flex gap-2 z-10">
-                    <button onclick="afficherIndiceSup()" id="btn-pastille-indice" class="hidden bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-500/40 p-2.5 rounded-full shadow-lg transition-all" title="Demander un indice (-10 XP)">💡</button>
+                    <button onclick="lireConsigneAudio()" class="bg-purple-950 hover:bg-purple-900 text-purple-400 border border-purple-500/40 p-2.5 rounded-full shadow-lg transition-all" title="Écouter la consigne">🔊</button>
+                    <button onclick="afficherIndiceSup()" id="btn-pastille-indice" class="hidden bg-amber-950 hover:bg-amber-900 text-amber-400 border border-amber-500/40 p-2.5 rounded-full shadow-lg transition-all" title="Demander un indice (Sans stress)">💡</button>
                     <button onclick="afficherFigureVisuelle()" id="btn-pastille-visuel" class="hidden bg-cyan-950 hover:bg-cyan-900 text-cyan-400 border border-cyan-500/40 p-2.5 rounded-full shadow-lg transition-all" title="Voir la figure radar">👁️</button>
                 </div>
 
+                <!-- Le contenu de la question s'injectera ici dynamiquement via JavaScript -->
                 <div id="game-content" class="flex-grow flex flex-col justify-center gap-6 mt-4"></div>
                 
+                <!-- Zone de feedback (Réussite / Explication d'erreur) -->
                 <div id="feedback" class="text-center font-bold text-sm sm:text-base mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 tracking-wide p-3"></div>
             </div>
         </section>
 
+        <!-- ==========================================================================
+             ÉCRAN 3 : BILAN DE FIN DE PARTIE
+             ========================================================================== -->
         <section id="end-card" class="hidden game-card rounded-2xl p-8 border shadow-xl text-center space-y-6 tracking-wide">
             <h2 class="text-2xl font-black text-cyan-400 uppercase tracking-wider">🏁 Rapport de Mission Validé</h2>
             <div class="flex justify-center gap-6">
@@ -182,6 +278,10 @@
             </div>
         </section>
 
+        <!-- ==========================================================================
+             MODALES (POP-UPS) : RADAR ET AIDE-MÉMOIRE
+             ========================================================================== -->
+        <!-- Modale : Affiche le dessin SVG de la figure (Aide) -->
         <dialog id="modal-figure" class="bg-transparent backdrop:bg-slate-950/80 p-4 fixed my-auto mx-auto inset-0 z-50">
             <div class="bg-[#0f1524] rounded-2xl shadow-2xl border border-cyan-500/40 max-w-sm w-full p-6 text-center">
                 <h3 class="text-sm font-black text-cyan-400 uppercase tracking-wider mb-4">Radar Géométrique</h3>
@@ -190,13 +290,14 @@
             </div>
         </dialog>
 
+        <!-- Modale : Aide-Mémoire PER complet -->
         <dialog id="modal-aide" class="bg-transparent backdrop:bg-slate-950/85 p-4 fixed my-auto mx-auto inset-0 z-50 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div class="bg-[#0f1524] rounded-2xl shadow-2xl border border-blue-500/40 p-6 space-y-6 text-left">
                 <div class="flex justify-between items-center border-b border-slate-800 pb-3">
-                    <h3 class="text-lg font-black text-blue-400 uppercase tracking-wider flex items-center gap-2">📘 Aide-Mémoire Géométrique</h3>
+                    <h3 class="text-lg font-black text-blue-400 uppercase tracking-wider flex items-center gap-2">📘 Aide-Mémoire Géométrique (PER)</h3>
                     <button onclick="document.getElementById('modal-aide').close()" class="text-slate-400 hover:text-white font-bold text-xl">✕</button>
                 </div>
-                
+                <!-- Grilles de l'aide-mémoire générées en JS -->
                 <div class="space-y-6">
                     <div>
                         <h4 class="text-xs font-bold text-amber-400 uppercase tracking-widest mb-3">🔺 Les Triangles</h4>
@@ -211,7 +312,6 @@
                         <div id="aide-solides" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
                     </div>
                 </div>
-                
                 <button onclick="document.getElementById('modal-aide').close()" class="w-full px-4 py-3 text-xs font-bold uppercase tracking-widest text-white bg-blue-900 hover:bg-blue-800 rounded-xl border border-blue-700 btn-game-active">Fermer</button>
             </div>
         </dialog>
@@ -219,86 +319,169 @@
     </main>
 
     <script>
-        // =========================================================================
-        // BASE DE DONNÉES GÉOMÉTRIQUES UNIFIÉE ET CORRIGÉE
-        // =========================================================================
+        /* =========================================================================
+           6. BASE DE DONNÉES GÉOMÉTRIQUES HARMONISÉE AUX OBJECTIFS PER
+           Chaque objet contient son nom, son type (triangle ou non), les degrés (6H-8H),
+           la définition formelle et les 3 indices progressifs.
+           ========================================================================= */
         const banqueGeometrie = {
           "figures_planes": [
-            // Triangles isolés avec indices clairs et précis (Langage direct adapté)
-            { "nom": "Triangle scalène", "isTriangle": true, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Un triangle quelconque. 3 côtés de longueurs toutes différentes. Aucun angle droit.", "indices": ["Je suis un triangle dit 'quelconque'.", "Mes trois côtés ont tous des longueurs complètement différentes.", "Je ne possède aucun angle droit et aucun côté égal."] },
-            { "nom": "Triangle rectangle", "isTriangle": true, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Possède 1 angle droit à 90° (forme un coin d'équerre).", "indices": ["Je suis un triangle avec un angle à 90° (angle droit).", "Tu as besoin d'une équerre pour tracer mon angle principal.", "L'un de mes coins est parfaitement droit."] },
-            { "nom": "Triangle isocèle", "isTriangle": true, "niveaux": ["7H", "8H"], "vocabulaire": "Possède 2 côtés égaux et un axe de symétrie.", "indices": ["Je suis un triangle qui possède 2 côtés exactement de la même longueur.", "Si on me coupe en deux au milieu, mes deux côtés se superposent.", "Mes deux angles posés sur ma base sont identiques."] },
-            { "nom": "Triangle équilatéral", "isTriangle": true, "niveaux": ["7H", "8H"], "vocabulaire": "3 côtés égaux, 3 angles égaux de 60°.", "indices": ["Je suis un triangle parfaitement régulier.", "Mes trois côtés mesurent absolument la même longueur.", "Mes trois angles intérieurs sont tous fermés à la même ouverture."] },
-            { "nom": "Triangle isocèle rectangle", "isTriangle": true, "niveaux": ["8H"], "vocabulaire": "Combine 1 angle droit (90°) et 2 côtés égaux.", "indices": ["Je suis un triangle spécial qui mélange deux propriétés.", "Je possède à la fois un angle droit de 90° et deux côtés de même longueur.", "Je suis la moitié exacte d'un carré coupé en diagonale."] },
+            { "nom": "Triangle quelconque", "isTriangle": true, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Un triangle classique, 3 côtés de longueurs différentes, pas de particularité.", "indices": ["Je possède exactement 3 côtés.", "Mes trois côtés n'ont pas la même longueur.", "Je ne possède aucun angle droit."] },
+            { "nom": "Triangle rectangle", "isTriangle": true, "niveaux": ["7H", "8H"], "vocabulaire": "Possède 1 angle droit mesurable à l'équerre.", "indices": ["Je suis une figure à 3 côtés.", "Je possède un angle droit parfait.", "Tu peux vérifier mon coin droit avec une équerre."] },
+            { "nom": "Triangle isocèle", "isTriangle": true, "niveaux": ["8H"], "vocabulaire": "Possède 2 côtés de même longueur et 1 axe de symétrie.", "indices": ["Je possède 3 côtés.", "Deux de mes côtés ont exactement la même mesure.", "Je possède 1 axe de symétrie unique."] },
+            { "nom": "Triangle équilatéral", "isTriangle": true, "niveaux": ["8H"], "vocabulaire": "Possède 3 côtés de même longueur et 3 axes de symétrie.", "indices": ["Je suis un triangle parfaitement régulier.", "Mes 3 côtés sont rigoureusement égaux.", "J'ai 3 axes de symétrie différents."] },
+            { "nom": "Triangle isocèle rectangle", "isTriangle": true, "niveaux": ["8H"], "vocabulaire": "Le combo spécial : 1 angle droit et 2 côtés égaux.", "indices": ["Je mixe deux propriétés différentes.", "J'ai un angle droit ET deux côtés de même longueur.", "Je suis comme un carré parfait plié en deux sur sa diagonale."] },
             
-            // Autres figures planes ordinaires
-            { "nom": "Carré", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "4 côtés égaux et 4 angles droits.", "indices": ["Je suis un quadrilatère régulier.", "Mes 4 côtés ont tous la même longueur et j'ai 4 angles droits.", "Mes diagonales se coupent à angle droit."] },
-            { "nom": "Rectangle", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "4 angles droits, côtés opposés égaux 2 à 2.", "indices": ["Je suis un quadrilatère allongé avec des angles droits.", "Mes côtés opposés sont de même longueur, mais mes côtés côte-à-côte sont différents.", "Mes diagonales se séparent en leur milieu mais sans angle droit."] },
-            { "nom": "Cercle", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Ligne courbe fermée sans aucun angle ni côté droit.", "indices": ["Je suis une figure plane ronde.", "On m'ajuste à l'aide de la pointe d'un compas.", "Tous mes points extérieurs sont à la même distance de mon centre."] },
-            { "nom": "Losange", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "4 côtés égaux sans angles droits.", "indices": ["Je suis un quadrilatère qui ressemble à un carré penché.", "Mes 4 côtés sont égaux, mais je n'ai aucun angle droit.", "Mes diagonales se croisent en formant une croix droite perpendiculaire."] },
-            { "nom": "Parallélogramme", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "Côtés opposés parallèles deux à deux.", "indices": ["Je suis un quadrilatère dont les lignes opposées ne se croisent jamais.", "Mes côtés face-à-face sont parallèles et de même taille.", "Je n'ai pas d'angles droits."] },
-            { "nom": "Trapèze", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "Possède seulement 2 côtés opposés parallèles.", "indices": ["Je suis un quadrilatère possédant deux côtés parallèles.", "Mes deux lignes parallèles s'appellent la grande base et la petite base.", "Mes deux autres lignes ne sont pas parallèles."] }
+            { "nom": "Carré", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "4 côtés égaux, opposés parallèles, 4 angles droits, 4 axes de symétrie.", "indices": ["Je suis un quadrilatère à 4 côtés égaux.", "J'ai 4 angles droits et mes côtés opposés sont parallèles.", "J'ai exactement 4 axes de symétrie."] },
+            { "nom": "Rectangle", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Côtés opposés égaux et parallèles, 4 angles droits, 2 axes de symétrie.", "indices": ["Je suis un quadrilatère allongé.", "Mes côtés opposés sont parallèles et égaux, et j'ai 4 angles droits.", "J'ai seulement 2 axes de symétrie."] },
+            { "nom": "Cercle", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Ligne courbe fermée, aucun côté droit, une infinité d'axes de symétrie.", "indices": ["On me trace à l'aide d'un compas.", "Tous mes points extérieurs sont à égale distance du centre.", "Je possède une infinité d'axes de symétrie."] },
+            { "nom": "Losange", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "4 côtés égaux, opposés parallèles, 2 axes de symétrie.", "indices": ["Je suis un quadrilatère avec 4 côtés égaux.", "Mes angles ne sont pas obligatoirement droits.", "Mes diagonales forment mes 2 uniques axes de symétrie."] },
+            { "nom": "Parallélogramme", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "Côtés opposés égaux et parallèles, aucun axe de symétrie.", "indices": ["Mes côtés face-à-face sont parallèles et égaux.", "Je ressemble à un rectangle sur lequel on aurait poussé.", "Je n'ai aucun axe de symétrie."] },
+            { "nom": "Trapèze quelconque", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "Possède uniquement 2 côtés opposés parallèles (les bases).", "indices": ["Je suis un quadrilatère avec seulement 2 côtés parallèles.", "Mes deux lignes parallèles s'appellent la grande et la petite base.", "Mes autres côtés ne sont pas du tout parallèles."] },
+            { "nom": "Cerf-volant", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "2 paires de côtés adjacents égaux, 1 axe de symétrie.", "indices": ["Je suis un quadrilatère qui porte le nom d'un jouet volant.", "J'ai deux paires de côtés collés qui sont de même taille.", "Une seule de mes diagonales est un axe de symétrie."] },
+            { "nom": "Fer de lance", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "En forme de flèche avec un angle rentrant, 1 axe de symétrie.", "indices": ["Je suis un quadrilatère non convexe en forme de flèche.", "J'ai un grand angle creux appelé angle rentrant.", "Je possède un seul axe de symétrie séparant ma pointe."] },
+            { "nom": "Trapèze rectangle", "isTriangle": false, "niveaux": ["8H"], "vocabulaire": "2 côtés parallèles et possède exactement 2 angles droits.", "indices": ["Je suis de la famille des trapèzes.", "En plus de mes 2 lignes parallèles, j'ai 2 angles droits.", "Mon côté latéral forme un angle parfait avec mes bases."] },
+            { "nom": "Trapèze isocèle", "isTriangle": false, "niveaux": ["8H"], "vocabulaire": "2 côtés parallèles, 2 autres côtés égaux, 1 axe de symétrie.", "indices": ["Je suis un trapèze symétrique.", "Mes deux bases sont parallèles, et mes deux côtés penchés ont la même taille.", "Je possède 1 axe de symétrie vertical."] }
           ],
           "solides": [
-            { "nom": "Cube", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Solide en 3D à 6 faces carrées identiques.", "indices": ["Je suis le solide régulier qui sert de dé à jouer.", "Je possède 6 faces, 12 arêtes et 8 sommets.", "Chacune de mes faces est un carré parfait."] },
-            { "nom": "Pavé droit", "isTriangle": false, "niveaux": ["6H", "7H", "8H"], "vocabulaire": "Solide en 3D à 6 faces rectangulaires.", "indices": ["Je suis un solide en volume comparable à une boîte à chaussures.", "J'ai 6 faces et 12 arêtes, mais mes faces sont des rectangles.", "Mes faces opposées sont parallèles."] },
-            { "nom": "Pyramide à base carrée", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "1 base carrée au sol et 4 côtés en triangles.", "indices": ["Je suis un solide qui s'élève en pointe depuis le sol.", "Ma base posée à plat est un carré, et mes autres faces sont des triangles.", "Je possède un sommet unique tout en haut."] },
-            { "nom": "Tétraèdre", "isTriangle": false, "niveaux": ["8H"], "vocabulaire": "Solide composé uniquement de 4 faces triangulaires.", "indices": ["Je suis une pyramide entièrement construite avec des triangles.", "J'ai exactement 4 sommets et 4 faces triangulaires.", "Je suis le plus simple des solides droits."] }
+            { "nom": "Cube", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "6 faces carrées identiques, 12 arêtes égales, 8 sommets.", "indices": ["Je suis un solide en 3D volumétrique.", "Mes 6 faces sont toutes des carrés identiques.", "J'ai 12 arêtes et 8 sommets."] },
+            { "nom": "Pavé droit", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "6 faces rectangulaires, 12 arêtes, 8 sommets.", "indices": ["Je suis un solide comparable à une boîte de briques ou de mouchoirs.", "Mes 6 faces sont toutes des rectangles.", "J'ai 8 sommets et 12 arêtes."] },
+            { "nom": "Pyramide à base carrée", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "1 base carrée, 4 faces triangulaires, 5 sommets, 8 arêtes.", "indices": ["Je m'élève en pointe depuis une base au sol.", "Ma base est un carré, mais mes 4 autres faces sont des triangles.", "Je possède 5 sommets au total."] },
+            { "nom": "Tétraèdre", "isTriangle": false, "niveaux": ["7H", "8H"], "vocabulaire": "Pyramide à base triangulaire : 4 faces triangulaires, 4 sommets, 6 arêtes.", "indices": ["Je suis un solide composé uniquement de triangles.", "J'ai exactement 4 faces triangulaires.", "Je possède 4 sommets et 6 arêtes."] }
           ]
         };
 
-        // =========================================================================
-        // VARIABLES DU SYSTÈME D'ÉTAT
-        // =========================================================================
-        let config = { niveau: null, mode: null };
+        /* =========================================================================
+           7. ÉTATS DE L'APPLICATION ET VARIABLES GLOBALES
+           ========================================================================= */
+        let config = { niveau: null, mode: null }; // Stocke les choix de l'écran 1
         let state = {
-            question: 1,
-            scoreGlobal: 0,
-            xp: 0,
-            donneesFiltrees: [],
-            modeCourant: null,
-            cibleCourante: null,
-            indicesAffiches: 0,
-            pointsManche: 30
+            question: 1,                 // Compteur de question (1 à 10)
+            scoreGlobal: 0,              // Nombre de bonnes réponses
+            xp: 0,                       // Points d'expérience accumulés
+            donneesFiltrees: [],         // Le pool de figures autorisées selon le niveau (6H/7H/8H)
+            modeCourant: null,           // Mode actif pour la question actuelle (A, B, C, D)
+            cibleCourante: null,         // La figure que l'élève doit trouver
+            indicesAffiches: 1,          // Nombre d'indices révélés dans le Mode A
+            pointsManche: 30,            // Points en jeu pour la manche
+            historiqueErreurs: []        // Tableau d'objets pour tracer les confusions (pour Firebase)
         };
-        let blocageSaisie = false; // Bloque les actions intempestives pendant le feedback
+        let blocageSaisie = false; // Empêche le multi-clic pendant les animations de feedback
 
-        // Injection du nom de l'élève connecté
+        // Extraction du nom de l'élève depuis l'URL ou la session (soutien personnalisé)
         const urlParamsConfig = new URLSearchParams(window.location.search);
         const nomEleveConfig = urlParamsConfig.get('eleve') || sessionStorage.getItem('nomEleve') || "Explorateur";
         document.getElementById('affichage-nom').innerText = `Agent : ${nomEleveConfig}`;
 
-        // =========================================================================
-        // RENDER GÉOMÉTRIQUE VECTORIEL SVG
-        // =========================================================================
+        /* =========================================================================
+           8. FONCTIONS GLOBALES (ACCESSIBILITÉ ET AUDIO)
+           ========================================================================= */
+        /**
+         * Alterne l'affichage de l'interface en mode "Boutons XL" pour les élèves
+         * ayant des difficultés motrices ou utilisant un vélo de bureau (classe flexible).
+         */
+        function toggleGrosBoutons() {
+            document.body.classList.toggle('mode-boutons-xl');
+            const estAgrandit = document.body.classList.contains('mode-boutons-xl');
+            document.getElementById('toggle-xl').innerText = estAgrandit ? "♿ Boutons XL" : "🚳 Boutons Standard";
+        }
+
+        /**
+         * Lit la consigne actuelle à voix haute en utilisant l'API SpeechSynthesis native de l'appareil.
+         */
+        function lireConsigneAudio() {
+            let texteALire = "";
+            if (state.modeCourant === 'A') {
+                texteALire = "Mode : Qui suis-je ? Écoute bien l'indice suivant pour trouver la bonne forme géométrique : " + state.cibleCourante.indices[0];
+            } else if (state.modeCourant === 'B') {
+                texteALire = "Mode : L'Intrus Visuel. Regarde bien les schémas géométriques affichés et élimine l'intrus.";
+            } else if (state.modeCourant === 'C') {
+                texteALire = "Mode : Tri Structurel. Indique si l'élément écrit à l'écran, le " + state.cibleCourante.nom + ", est une figure plane en deux dimensions ou un solide en trois dimensions.";
+            } else if (state.modeCourant === 'D') {
+                texteALire = "Mode : Qui est-ce complet. Lis les trois indices simultanément et clique sur l'unique forme qui correspond à la description parmi les six proposées.";
+            }
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Coupe l'audio précédent s'il tourne encore
+                const utterance = new SpeechSynthesisUtterance(texteALire);
+                utterance.lang = 'fr-CH'; // Accent suisse romand si disponible
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        /* =========================================================================
+           9. MOTEUR DE DESSIN ET RENDER GEOMÉTRIQUE VECTO & 3D CSS
+           ========================================================================= */
+        /**
+         * Génère le code HTML (SVG ou DIV 3D) correspondant au nom de la forme.
+         * @param {string} nom - Le nom exact de la figure (ex: "Carré").
+         * @param {string} customClass - Les classes CSS Tailwind à injecter (taille, couleur).
+         * @returns {string} - Le HTML à insérer dans le DOM.
+         */
         function getSVGForShape(nom, customClass = "w-20 h-20 text-cyan-400") {
+            // Rendu 3D CSS réel pour les solides si demandé
+            if (['Cube', 'Pavé droit', 'Pyramide à base carrée', 'Tétraèdre'].includes(nom)) {
+                // Si c'est pour l'aide-mémoire (petite taille), on affiche une icône texte simple
+                if (customClass.includes("w-14")) {
+                    return `<span class="text-3xl">📦</span>`;
+                }
+                let structure3d = "";
+                // Construction géométrique 3D en CSS via transform rotate/translate
+                if(nom === 'Cube') {
+                    structure3d = `
+                        <div class="cube3d">
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateY(0deg) translateZ(30px);"></div>
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateY(90deg) translateZ(30px);"></div>
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateY(180deg) translateZ(30px);"></div>
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateY(-90deg) translateZ(30px);"></div>
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateX(90deg) translateZ(30px);"></div>
+                            <div class="face3d" style="width:60px; height:60px; transform: rotateX(-90deg) translateZ(30px);"></div>
+                        </div>`;
+                } else if(nom === 'Pavé droit') {
+                    structure3d = `
+                        <div class="cube3d">
+                            <div class="face3d" style="width:80px; height:50px; transform: rotateY(0deg) translateZ(25px);"></div>
+                            <div class="face3d" style="width:80px; height:50px; transform: rotateY(180deg) translateZ(25px);"></div>
+                            <div class="face3d" style="width:50px; height:50px; transform: rotateY(90deg) translateZ(40px);"></div>
+                            <div class="face3d" style="width:50px; height:50px; transform: rotateY(-90deg) translateZ(40px);"></div>
+                            <div class="face3d" style="width:80px; height:50px; transform: rotateX(90deg) translateZ(25px);"></div>
+                            <div class="face3d" style="width:80px; height:50px; transform: rotateX(-90deg) translateZ(25px);"></div>
+                        </div>`;
+                } else {
+                    // Repli visuel pour les pyramides (complexe en pur CSS sans librairie externe)
+                    structure3d = `<div class="cube3d flex items-center justify-center text-4xl">🔺💎</div>`;
+                }
+                return `<div class="scene3d flex items-center justify-center">${structure3d}</div>`;
+            }
+
+            // Polygones réguliers et irréguliers en SVG pur (2D)
             const s = `<svg class="${customClass} drop-shadow-[0_0_6px_rgba(34,211,238,0.4)]" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="4" stroke-linejoin="round">`;
             const e = `</svg>`;
             switch(nom) {
-                case 'Triangle scalène': return s + `<polygon points="25,25 85,45 35,80"/>` + e;
+                case 'Triangle quelconque': return s + `<polygon points="20,25 85,40 35,85"/>` + e;
                 case 'Triangle rectangle': return s + `<polygon points="25,20 25,80 85,80"/><polyline points="25,70 35,70 35,80"/>` + e;
-                case 'Triangle isocèle': return s + `<polygon points="50,20 20,80 80,80"/><line x1="35" y1="50" x2="41" y2="50"/><line x1="59" y1="50" x2="65" y2="50"/>` + e;
-                case 'Triangle équilatéral': return s + `<polygon points="50,23 15,83 85,83"/>` + e;
+                case 'Triangle isocèle': return s + `<polygon points="50,20 20,80 80,80"/><line x1="35" y1="50" x2="45" y2="50"/>` + e;
+                case 'Triangle équilatéral': return s + `<polygon points="50,20 15,80 85,80"/>` + e;
                 case 'Triangle isocèle rectangle': return s + `<polygon points="20,20 20,80 80,80"/><polyline points="20,70 30,70 30,80"/>` + e;
                 case 'Carré': return s + `<rect x="20" y="20" width="60" height="60"/>` + e;
                 case 'Rectangle': return s + `<rect x="10" y="30" width="80" height="40"/>` + e;
-                case 'Cercle': return s + `<circle cx="50" cy="50" r="32"/>` + e;
+                case 'Cercle': return s + `<circle cx="50" cy="50" r="35"/>` + e;
                 case 'Losange': return s + `<polygon points="50,15 80,50 50,85 20,50"/>` + e;
-                case 'Parallélogramme': return s + `<polygon points="30,30 85,30 70,70 15,70"/>` + e;
-                case 'Trapèze': return s + `<polygon points="30,30 70,30 90,70 10,70"/>` + e;
-                case 'Cube': return s + `<rect x="25" y="40" width="45" height="45"/><path d="M25,40 L45,20 L90,20 L90,65 L70,85 M70,40 L90,20 M45,20 L45,45" stroke-dasharray="2,2"/>` + e;
-                case 'Pavé droit': return s + `<rect x="15" y="45" width="55" height="35"/><path d="M15,45 L35,25 L90,25 L90,60 L70,80 M70,45 L90,25" stroke-dasharray="2,2"/>` + e;
-                case 'Pyramide à base carrée': return s + `<polygon points="50,15 15,75 70,85 50,15 70,85 85,65 50,15"/><path d="M15,75 L45,55 L85,65 M45,55 L50,15" stroke-dasharray="2,2"/>` + e;
-                case 'Tétraèdre': return s + `<polygon points="50,15 15,80 85,80 50,15 85,80"/><path d="M15,80 L45,60 L50,15 M45,60 L85,80" stroke-dasharray="2,2"/>` + e;
+                case 'Parallélogramme': return s + `<polygon points="35,30 85,30 65,70 15,70"/>` + e;
+                case 'Trapèze quelconque': return s + `<polygon points="30,30 75,30 90,70 10,70"/>` + e;
+                case 'Cerf-volant': return s + `<polygon points="50,15 80,45 50,85 20,45"/><line x1="50" y1="15" x2="50" y2="85" stroke-dasharray="2,2"/>` + e;
+                case 'Fer de lance': return s + `<polygon points="50,15 80,85 50,60 20,85"/>` + e;
+                case 'Trapèze rectangle': return s + `<polygon points="25,30 75,30 90,70 25,70"/><polyline points="25,40 35,40 35,30"/>` + e;
+                case 'Trapèze isocèle': return s + `<polygon points="30,30 70,30 85,70 15,70"/>` + e;
                 default: return s + `<text x="50" y="55" font-size="30" text-anchor="middle" fill="currentColor" stroke="none">?</text>` + e;
             }
         }
 
-        // =========================================================================
-        // GESTION DU MENU DE PARAMÉTRAGE
-        // =========================================================================
+        /* =========================================================================
+           10. CONFIGURATION ET LANCEMENT DE LA MISSION
+           ========================================================================= */
         function selectLevel(lvl) {
             config.niveau = lvl;
+            // Gestion visuelle des boutons radio stylisés
             document.querySelectorAll('.lvl-btn').forEach(b => b.classList.remove('option-selected'));
             document.getElementById('btn-lvl-'+lvl).classList.add('option-selected');
             checkReady();
@@ -312,6 +495,7 @@
         }
 
         function checkReady() {
+            // Débloque le bouton "Initialiser" si les deux paramètres sont sélectionnés
             const btn = document.getElementById('btn-start');
             if(config.niveau && config.mode) {
                 btn.removeAttribute('disabled');
@@ -320,10 +504,12 @@
         }
 
         function demarrerMission() {
+            // Filtrage strict de la banque de données selon le degré scolaire du PER
             let planes = banqueGeometrie.figures_planes.filter(f => f.niveaux.includes(config.niveau)).map(p => ({...p, type: 'plane'}));
             let solides = banqueGeometrie.solides.filter(f => f.niveaux.includes(config.niveau)).map(s => ({...s, type: 'solide'}));
             state.donneesFiltrees = [...planes, ...solides];
 
+            // Transition d'écrans
             document.getElementById('config-screen').classList.add('hidden');
             document.getElementById('game-screen').classList.remove('hidden');
             
@@ -331,6 +517,9 @@
             chargerQuestion();
         }
 
+        /**
+         * Fonction utilitaire : Mélange un tableau (Algorithme de Fisher-Yates).
+         */
         function melanger(array) {
             let clone = [...array];
             for (let i = clone.length - 1; i > 0; i--) {
@@ -340,65 +529,68 @@
             return clone;
         }
 
-        // =========================================================================
-        // DISTRIBUTION ET CHARGEMENT DES MANCHES
-        // =========================================================================
+        /* =========================================================================
+           11. BOUCLE PRINCIPALE DU JEU
+           ========================================================================= */
         function chargerQuestion() {
+            // Condition de fin de partie
             if (state.question > 10) {
                 terminerMission();
                 return;
             }
 
-            blocageSaisie = false;
+            blocageSaisie = false; // Réactivation des clics
             document.getElementById('num-question').innerText = state.question;
             
+            // Réinitialisation de la zone de feedback visuel
             const fb = document.getElementById('feedback');
             fb.innerHTML = ''; 
             fb.className = "text-center font-bold text-sm sm:text-base mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 p-3";
             document.getElementById('game-container').className = "game-card rounded-2xl p-6 sm:p-8 border shadow-xl min-h-[440px] flex flex-col relative transition-all duration-300";
 
+            // Masquage des outils d'aide par défaut (réactivés selon le mode)
             document.getElementById('btn-pastille-indice').classList.add('hidden');
             document.getElementById('btn-pastille-visuel').classList.add('hidden');
 
-            state.modeCourant = config.mode === 'Mixte' ? ['A', 'B', 'C'][Math.floor(Math.random()*3)] : config.mode;
+            // Choix du mode courant (Si "Mixte", tirage au sort parmi A, B, C, D)
+            state.modeCourant = config.mode === 'Mixte' ? ['A', 'B', 'C', 'D'][Math.floor(Math.random()*4)] : config.mode;
             
+            // Routage vers le bon générateur d'interface
             if(state.modeCourant === 'A') genererModeA();
             else if(state.modeCourant === 'B') genererModeB();
-            else genererModeC();
+            else if(state.modeCourant === 'C') genererModeC();
+            else genererModeD();
         }
 
-        // =========================================================================
-        // MODE A : LOGIQUE DU "QUI SUIS-JE ?" (AVEC FILTRE TRIANGLES HOMOGÈNE)
-        // =========================================================================
+        /* =========================================================================
+           MODE A : LOGIQUE DU "QUI SUIS-JE ?" (Lecture progressive)
+           ========================================================================= */
         function genererModeA() {
             document.getElementById('label-mode').innerText = "Mode A : Identification";
-            state.pointsManche = 30;
+            state.pointsManche = 30; // Max points, dégressif si l'élève demande des indices
             state.indicesAffiches = 1;
             
+            // Sélection de la cible
             const cible = state.donneesFiltrees[Math.floor(Math.random() * state.donneesFiltrees.length)];
             state.cibleCourante = cible;
 
+            // Pièges intelligents : on essaie de proposer des figures de la même famille (triangles vs le reste)
             let autres = [];
-            
-            // CORRECTION PÉDAGOGIQUE : Si le sujet est un triangle, on force des triangles en distracteurs
             if (cible.isTriangle) {
-                // On récupère tous les autres triangles disponibles dans la banque complète pour le niveau
                 let poolTriangles = state.donneesFiltrees.filter(d => d.isTriangle && d.nom !== cible.nom);
                 autres = melanger(poolTriangles).slice(0, 3);
-                
-                // Sécurité si la banque du niveau manque de choix, on pioche dans la banque globale
-                if (autres.length < 3) {
-                    let complément = banqueGeometrie.figures_planes.filter(f => f.isTriangle && f.nom !== cible.nom && !autres.map(a=>a.nom).includes(f.nom));
-                    autres = [...autres, ...melanger(complément)].slice(0, 3);
-                }
             } else {
-                // Sinon (c'est une figure classique ou solide), on exclut les triangles pour éviter la confusion inverse
                 let poolStandard = state.donneesFiltrees.filter(d => d.nom !== cible.nom && !d.isTriangle);
                 autres = melanger(poolStandard).slice(0, 3);
+            }
+            // Sécurité si manque de figures dans la famille
+            while(autres.length < 3) {
+                autres.push(state.donneesFiltrees.find(x => x.nom !== cible.nom && !autres.includes(x)));
             }
             
             let options = melanger([cible, ...autres]);
 
+            // Injection du HTML
             const container = document.getElementById('game-content');
             container.innerHTML = `
                 <div class="bg-[#090d16] p-5 rounded-2xl border border-[#24324f] text-center shadow-inner">
@@ -412,16 +604,19 @@
                 </div>
             `;
 
+            // Outils activés : Indice et Radar
             document.getElementById('btn-pastille-indice').classList.remove('hidden');
             document.getElementById('btn-pastille-visuel').classList.remove('hidden');
         }
 
         function afficherIndiceSup() {
             if(state.indicesAffiches >= 3 || blocageSaisie) return;
-            state.pointsManche -= 10;
+            // Réduit la valeur de la manche (-10 XP par indice supplémentaire)
+            state.pointsManche -= 10; 
             const idxText = state.cibleCourante.indices[state.indicesAffiches];
             document.getElementById('zone-indices').innerHTML += `<p class="text-slate-400 text-sm font-medium italic border-t border-slate-800/50 pt-2">« ${idxText} »</p>`;
             state.indicesAffiches++;
+            // Cache le bouton s'il n'y a plus d'indices
             if(state.indicesAffiches === 3) document.getElementById('btn-pastille-indice').classList.add('hidden');
         }
 
@@ -430,60 +625,43 @@
             gererFinManche(nomChoisi === state.cibleCourante.nom, nomChoisi);
         }
 
-        // =========================================================================
-        // MODE B : L'INTRUS VISUEL (STRUCTURE PLANE ET SOLIDE BIEN SÉPARÉE)
-        // =========================================================================
+        /* =========================================================================
+           MODE B : L'INTRUS VISUEL (Différence 2D / 3D)
+           ========================================================================= */
         function genererModeB() {
             document.getElementById('label-mode').innerText = "Mode B : L'Intrus Visuel";
-            state.pointsManche = 10;
+            state.pointsManche = 15;
 
+            // Détermine quel type domine la grille (plane ou solide)
             let typeGroupe = Math.random() > 0.5 ? 'plane' : 'solide';
             let poolGroupe = state.donneesFiltrees.filter(d => d.type === typeGroupe);
             
+            // Sécurité pour les petits niveaux (ex: pas assez de solides)
             if(poolGroupe.length < 3) {
                 typeGroupe = typeGroupe === 'plane' ? 'solide' : 'plane';
                 poolGroupe = state.donneesFiltrees.filter(d => d.type === typeGroupe);
             }
 
             let intru;
-            let baseMélangée = melanger(poolGroupe);
-            let elementsDuGroupe = [];
+            let elementsDuGroupe = melanger(poolGroupe).slice(0, 3);
+            intru = state.donneesFiltrees.find(d => d.type !== typeGroupe);
 
-            if (typeGroupe === 'plane') {
-                let triangles = baseMélangée.filter(f => f.isTriangle);
-                let nonTriangles = baseMélangée.filter(f => !f.isTriangle);
-
-                if (triangles.length >= 3 && nonTriangles.length >= 1) {
-                    elementsDuGroupe = triangles.slice(0, 3);
-                    intru = nonTriangles[0];
-                } else if (nonTriangles.length >= 3 && triangles.length >= 1) {
-                    elementsDuGroupe = nonTriangles.slice(0, 3);
-                    intru = triangles[0];
-                } else {
-                    elementsDuGroupe = baseMélangée.slice(0, 3);
-                    intru = state.donneesFiltrees.find(d => d.type === 'solide') || baseMélangée[3];
-                }
-            } else {
-                elementsDuGroupe = baseMélangée.slice(0, 3);
-                let poolIntrusSolides = baseMélangée.filter(s => !elementsDuGroupe.map(e=>e.nom).includes(s.nom));
-                if(poolIntrusSolides.length > 0) {
-                    intru = poolIntrusSolides[0];
-                } else {
-                    intru = state.donneesFiltrees.find(d => d.type === 'plane');
-                }
+            if(!intru) { 
+                // Fallback de sécurité extrême : on prend un intrus du même type mais nom différent
+                intru = state.donneesFiltrees.find(d => d.nom !== elementsDuGroupe[0].nom);
             }
 
             state.cibleCourante = intru;
             let options = melanger([intru, ...elementsDuGroupe]);
 
+            // Affichage d'une grille visuelle contenant les SVG/3D
             const container = document.getElementById('game-content');
             container.innerHTML = `
-                <p class="text-center text-xs font-bold text-amber-400 uppercase tracking-widest mb-1">Analyse des structures :</p>
-                <p class="text-center text-sm text-slate-400 mb-2">Examinez les schémas et éliminez l'intrus qui rompt la règle du groupe.</p>
+                <p class="text-center text-sm text-slate-400 mb-2">Examinez les architectures radar. Éliminez l'intrus structurel.</p>
                 <div class="grid grid-cols-2 gap-4">
                     ${options.map(opt => `
-                        <button onclick="validerReponseB('${opt.nom}')" class="option-btn text-slate-200 font-bold py-4 px-2 rounded-xl flex flex-col items-center justify-center gap-3 btn-game-active w-full">
-                            <div class="bg-[#090d16] p-2 rounded-lg border border-slate-800 flex items-center justify-center w-24 h-24 shadow-inner">
+                        <button onclick="validerReponseB('${opt.nom}')" class="option-btn text-slate-200 font-bold py-3 px-2 rounded-xl flex flex-col items-center justify-center gap-2 btn-game-active w-full">
+                            <div class="bg-[#090d16] p-2 rounded-lg border border-slate-800 flex items-center justify-center w-28 h-28 shadow-inner">
                                 ${getSVGForShape(opt.nom, "w-16 h-16 text-cyan-400")}
                             </div>
                             <span class="text-xs uppercase tracking-wider">${opt.nom}</span>
@@ -498,9 +676,9 @@
             gererFinManche(nomChoisi === state.cibleCourante.nom, nomChoisi);
         }
 
-        // =========================================================================
-        // MODE C : CLASSIFICATION NETTE (FIGURES PLANES VS SOLIDES)
-        // =========================================================================
+        /* =========================================================================
+           MODE C : CLASSIFICATION NETTE (FIGURES PLANES VS SOLIDES)
+           ========================================================================= */
         function genererModeC() {
             document.getElementById('label-mode').innerText = "Mode C : Tri Structurel (2D vs 3D)";
             state.pointsManche = 10;
@@ -511,7 +689,7 @@
             let critere1 = "Figure Plane (2D)"; 
             let critere2 = "Solide (3D)";
             let bonneBoite = cible.type === 'plane' ? 1 : 2;
-            state.cibleCourante.bonneBoite = bonneBoite;
+            state.cibleCourante.bonneBoite = bonneBoite; // On stocke la bonne réponse dans la cible
 
             const container = document.getElementById('game-content');
             container.innerHTML = `
@@ -519,7 +697,7 @@
                     <p class="text-xs font-bold text-cyan-400 uppercase tracking-widest">Élément à classifier :</p>
                     <p class="text-xl font-black text-slate-100 tracking-wider uppercase font-mono">${cible.nom}</p>
                     <div class="bg-[#05070f] p-3 rounded-xl border border-slate-800 mt-1">
-                        ${getSVGForShape(cible.nom, "w-16 h-16 text-amber-400")}
+                        ${getSVGForShape(cible.nom, "w-20 h-20 text-amber-400")}
                     </div>
                 </div>
                 <div class="grid grid-cols-2 gap-4">
@@ -537,18 +715,67 @@
 
         function validerReponseC(boiteChoisie) {
             if(blocageSaisie) return;
-            // On convertit le choix numérique en texte clair pour alimenter la correction comparative
             let nomChoixTexte = boiteChoisie === 1 ? "Figure Plane (2D)" : "Solide (3D)";
             gererFinManche(boiteChoisie === state.cibleCourante.bonneBoite, nomChoixTexte);
         }
 
-        // =========================================================================
-        // INTERFACE MODALE DE L'AIDE-MÉMOIRE
-        // =========================================================================
+        /* =========================================================================
+           NOUVEAU - MODE D : QUI-EST-CE COMPLET (Déduction sur Grille de 6)
+           ========================================================================= */
+        function genererModeD() {
+            document.getElementById('label-mode').innerText = "Mode D : Qui-est-ce ?";
+            state.pointsManche = 30;
+
+            // La cible est l'élément que l'élève doit trouver
+            const cible = state.donneesFiltrees[Math.floor(Math.random() * state.donneesFiltrees.length)];
+            state.cibleCourante = cible;
+
+            // Sélection de 5 intrus différents de la cible
+            let pool = state.donneesFiltrees.filter(d => d.nom !== cible.nom);
+            let intrus = melanger(pool).slice(0, 5);
+            let options = melanger([cible, ...intrus]); // Grille de 6 options au total
+
+            const container = document.getElementById('game-content');
+            
+            // Affichage des 3 indices simultanément + la grille de sélection
+            container.innerHTML = `
+                <div class="bg-[#090d16] p-4 rounded-2xl border border-purple-500/30 shadow-inner mb-4">
+                    <p class="text-xs font-bold text-purple-400 uppercase tracking-widest mb-3 text-center">Fiche de la cible</p>
+                    <ul class="text-slate-300 text-sm space-y-2 list-disc list-inside">
+                        <li>${cible.indices[0]}</li>
+                        <li>${cible.indices[1]}</li>
+                        <li>${cible.indices[2]}</li>
+                    </ul>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    ${options.map(opt => `
+                        <button onclick="validerReponseD('${opt.nom}')" class="option-btn bg-[#172033] border border-slate-700 hover:border-purple-400 rounded-xl p-3 flex flex-col items-center justify-center gap-2 btn-game-active w-full transition-all">
+                            <div class="flex items-center justify-center h-16 w-16 pointer-events-none">
+                                ${getSVGForShape(opt.nom, "w-12 h-12 text-slate-200")}
+                            </div>
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-slate-300 text-center leading-tight h-6">${opt.nom}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function validerReponseD(nomChoisi) {
+            if(blocageSaisie) return;
+            gererFinManche(nomChoisi === state.cibleCourante.nom, nomChoisi);
+        }
+
+        /* =========================================================================
+           12. INTERFACE MODALE DE L'AIDE-MÉMOIRE
+           ========================================================================= */
         function ouvrirAideMemoire() {
             document.getElementById('modal-aide').showModal();
         }
 
+        /**
+         * Génère dynamiquement l'aide-mémoire en fonction des données de la banque.
+         * Trie les éléments par famille (Triangles, Planes, Solides).
+         */
         function genererContenuAideMemoire() {
             const zTriangles = document.getElementById('aide-triangles');
             const zPlanes = document.getElementById('aide-planes');
@@ -558,14 +785,17 @@
             zPlanes.innerHTML = '';
             zSolides.innerHTML = '';
 
+            // Injection des Triangles
             banqueGeometrie.figures_planes.filter(f => f.isTriangle).forEach(t => {
                 zTriangles.innerHTML += creerCarteMiniAide(t, "border-amber-500/30");
             });
 
+            // Injection des autres quadrilatères et figures planes
             banqueGeometrie.figures_planes.filter(f => !f.isTriangle).forEach(p => {
                 zPlanes.innerHTML += creerCarteMiniAide(p, "border-cyan-500/30");
             });
 
+            // Injection des Solides
             banqueGeometrie.solides.forEach(s => {
                 zSolides.innerHTML += creerCarteMiniAide(s, "border-purple-500/30");
             });
@@ -584,59 +814,69 @@
         }
 
         function trouverDefinition(nom) {
-            // Cherche la définition textuelle associée à n'importe quel élément pour étayer l'explication de l'erreur
             let trouve = banqueGeometrie.figures_planes.find(f => f.nom === nom) || banqueGeometrie.solides.find(s => s.nom === nom);
             return trouve ? trouve.vocabulaire : "";
         }
 
-        // =========================================================================
-        // MOTEUR DE CORRECTION ET D'EXPLICATION FORMALISÉE
-        // =========================================================================
+        /* =========================================================================
+           13. MOTEUR DE CORRECTION ET D'EXPLICATION CLINIQUE (FIREBASE+)
+           ========================================================================= */
+        /**
+         * Gère la validation de la réponse de l'élève, affiche le feedback pédagogique
+         * et temporise avant de passer à la question suivante (apprentissage sans stress).
+         */
         function gererFinManche(estCorrect, nomChoisi) {
             blocageSaisie = true;
             const fb = document.getElementById('feedback');
             const gc = document.getElementById('game-container');
             
             if (estCorrect) {
+                // Cas de réussite
                 state.scoreGlobal++;
                 state.xp += state.pointsManche;
                 document.getElementById('score-xp').innerText = state.xp;
                 
                 fb.innerHTML = `<div>🟢 ANALYSE VALIDE (+${state.pointsManche} XP)</div>`;
-                fb.className = "text-center font-bold text-base mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.1)] p-3";
-                gc.className = "game-card rounded-2xl p-6 sm:p-8 border min-h-[440px] flex flex-col relative transition-all duration-300 border-emerald-500/40 shadow-[0_0_20px_rgba(16,185,129,0.15)]";
+                fb.className = "text-center font-bold text-base mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 p-3";
+                gc.className = "game-card rounded-2xl p-6 sm:p-8 border min-h-[440px] flex flex-col relative transition-all duration-300 border-emerald-500/40 shadow-[0_0_15px_rgba(52,211,153,0.2)]";
             } else {
-                // CORRECTIONS APPORTÉES : Recherche et construction d'un texte d'explication analytique complet
+                // Cas d'erreur : Construction du feedback explicatif croisé
                 let descriptionCible = "";
                 let descriptionErreur = "";
 
                 if (state.modeCourant === 'C') {
-                    // Explication adaptée au mode 2D vs 3D
+                    // Feedback spécifique pour le tri 2D/3D
                     let attenduTexte = state.cibleCourante.bonneBoite === 1 ? "Figure Plane (2D)" : "Solide (3D)";
-                    descriptionCible = `Le ${state.cibleCourante.nom} est un(e) <strong>${attenduTexte}</strong> (${state.cibleCourante.vocabulaire}).`;
-                    descriptionErreur = `Tu l'as classé par erreur dans la catégorie : <strong>${nomChoisi}</strong>.`;
+                    descriptionCible = `Le ${state.cibleCourante.nom} est un(e) <strong>${attenduTexte}</strong>.`;
+                    descriptionErreur = `Tu l'as classé par erreur comme un(e) : <strong>${nomChoisi}</strong>.`;
                 } else {
-                    // Explication pour les modes d'identification ou intrus
+                    // Feedback pour les confusions de formes (Modes A, B, D)
                     let defCible = trouverDefinition(state.cibleCourante.nom);
                     let defChoisi = trouverDefinition(nomChoisi);
-                    descriptionCible = `La cible était le <strong>${state.cibleCourante.nom}</strong> : ${defCible}`;
-                    descriptionErreur = `Tu as sélectionné le <strong>${nomChoisi}</strong> : ${defChoisi}`;
+                    descriptionCible = `L'élément recherché était le <strong>${state.cibleCourante.nom}</strong> : ${defCible}`;
+                    descriptionErreur = `Tu as confondu avec le <strong>${nomChoisi}</strong> : ${defChoisi}`;
                 }
 
-                // Affichage structuré sur deux niveaux (Alerte rouge + bloc explicatif)
+                // Enregistrement de l'erreur dans l'historique de la session
+                state.historiqueErreurs.push({
+                    consigneCible: state.cibleCourante.nom,
+                    reponseEleve: nomChoisi,
+                    mode: state.modeCourant
+                });
+
                 fb.innerHTML = `
-                    <div class="text-rose-400 uppercase tracking-wide font-black mb-1">🔴 COMPRÉHENSION À REVOIR</div>
+                    <div class="text-rose-400 uppercase tracking-wide font-black mb-1">🔴 APPRENTISSAGE EN COURS</div>
                     <div class="text-xs text-slate-300 font-normal leading-relaxed text-center max-w-xl mx-auto">
                         ${descriptionErreur}<br>
                         <span class="text-emerald-400 font-medium">${descriptionCible}</span>
                     </div>
                 `;
-                fb.className = "text-center font-bold mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 bg-rose-950/80 border border-rose-500/30 shadow-[0_0_15px_rgba(244,63,94,0.1)] p-3";
-                gc.className = "game-card rounded-2xl p-6 sm:p-8 border min-h-[440px] flex flex-col relative transition-all duration-300 border-rose-500/40 shadow-[0_0_20px_rgba(244,63,94,0.15)]";
+                fb.className = "text-center font-bold mt-6 min-h-[4rem] flex flex-col items-center justify-center rounded-xl transition-all duration-300 bg-rose-950/80 border border-rose-500/30 p-3";
+                gc.className = "game-card rounded-2xl p-6 sm:p-8 border min-h-[440px] flex flex-col relative transition-all duration-300 border-rose-500/40";
             }
 
-            // Temps rallongé à 4 secondes si erreur pour laisser à l'élève le temps de lire le feedback pédagogique
-            let delai = estCorrect ? 2500 : 4000;
+            // Temporisation asymétrique pour laisser à l'élève le temps d'intégrer son erreur sans subir de pression
+            let delai = estCorrect ? 2000 : 5500; 
 
             setTimeout(() => {
                 state.question++;
@@ -644,6 +884,7 @@
             }, delai);
         }
 
+        // Action déclenchée par l'outil "Radar"
         function afficherFigureVisuelle() {
             if (blocageSaisie) return;
             const container = document.getElementById('visuel-svg-container');
@@ -651,6 +892,9 @@
             document.getElementById('modal-figure').showModal();
         }
 
+        /* =========================================================================
+           14. ÉCRAN DE FIN ET COMMUNICATION BASE DE DONNÉES
+           ========================================================================= */
         function terminerMission() {
             document.getElementById('game-screen').classList.add('hidden');
             document.getElementById('end-card').classList.remove('hidden');
@@ -658,22 +902,23 @@
             document.getElementById('final-xp').innerText = state.xp;
             document.getElementById('final-score').innerText = state.scoreGlobal;
             
+            // Évaluation bienveillante du score final
             const appreciation = document.getElementById('appreciation');
             if (state.scoreGlobal === 10) {
-                appreciation.innerText = "⚡ Incroyable ! Code d'accès décrypté à 100%. Vous êtes un expert géomètre.";
+                appreciation.innerText = "⚡ Incroyable ! Secteur géométrique entièrement maîtrisé. Félicitations !";
             } else if (state.scoreGlobal >= 7) {
-                appreciation.innerText = "👍 Très bon travail ! Le secteur est sécurisé, vos connaissances sont solides.";
-            } else if (state.scoreGlobal >= 5) {
-                appreciation.innerText = "🔍 Mission accomplie, mais le radar indique des failles à corriger. Entraînez-vous encore !";
+                appreciation.innerText = "👍 Très bon travail ! Les notions du plan d'études sont bien assimilées.";
             } else {
-                appreciation.innerText = "⚠️ Alerte ! Données corrompues. Un retour au QG d'entraînement est fortement conseillé.";
+                appreciation.innerText = "🔍 Mission accomplie ! Relis tranquillement l'aide-mémoire pour combler les dernières failles.";
             }
 
+            // Préparation des données pour Firebase (Tracking du projet Numéria)
             const fautes = 10 - state.scoreGlobal;
-            const nomExercice = `Geometrie_${config.niveau}_Mode_${config.mode}`;
+            const nomExercice = `PER_Geometrie_${config.niveau}_M_${config.mode}`;
             
+            // Appel de la fonction globale d'écriture en base
             if (typeof window.enregistrerScoreFirebase === 'function') {
-                window.enregistrerScoreFirebase(nomExercice, state.scoreGlobal, fautes);
+                window.enregistrerScoreFirebase(nomExercice, state.scoreGlobal, fautes, state.historiqueErreurs);
             }
         }
     </script>
